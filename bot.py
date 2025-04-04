@@ -1,8 +1,13 @@
+import os
+from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Insert your bot token here
-BOT_TOKEN = 'your_token_here'
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the token from environment variable
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 
 # This function handles the /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
