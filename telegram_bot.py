@@ -22,7 +22,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Message handler for any of the buttons
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text in ["Hello", "World", "Telegram", "Bot"]:
         await update.message.reply_text(text)
@@ -33,7 +33,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message1))
 
     print("Bot is running...")
     app.run_polling()
