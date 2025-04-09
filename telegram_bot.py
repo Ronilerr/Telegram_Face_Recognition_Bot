@@ -48,7 +48,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "Recognize faces":
         await update.message.reply_text("Upload an image with at least one face and I will recognize who is in this image.")
         user_states[user_id] = "awaiting_recognition"
-
+    
+    # Reset faces
+    elif text == "Reset faces":
+        known_faces.clear()
+        known_names.clear()
+        await start(update, context)
+    
     # User is now sending a name after face image
     elif user_states.get(user_id) == "awaiting_name":
         name = text
@@ -153,8 +159,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
