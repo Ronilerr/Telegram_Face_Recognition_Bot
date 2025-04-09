@@ -13,7 +13,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Define the custom keyboard
 keyboard_buttons = [
     [KeyboardButton("Add face"), KeyboardButton("Recognize faces")],
-    [KeyboardButton("Reset faces")]
+    [KeyboardButton("Reset faces"), KeyboardButton("Similar celebs")]
 ]
 reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
 # In-memory face database
