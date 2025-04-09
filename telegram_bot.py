@@ -159,6 +159,61 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = None
         await start(update, context)
 
+    # Handle photo for "Similar celebs"
+    elif user_states.get(user_id) == "awaiting_celebrity_comparison":
+        # Download image from user
+        photo_file = await update.message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+
+        # Load image and get face encodings
+        img = face_recognition.load_image_file(BytesIO(photo_bytes))
+        encodings = face_recognition.face_encodings(img)
+
+        if len(encodings) != 1:
+            await update.message.reply_text("Please upload an image with exactly one face.")
+            return
+
+        uploaded_encoding = encodings[0]
+        best_match_name = None
+        best_match_image_path = None
+        best_distance = float("inf")
+
+        # Go over celeb folders
+        celeb_dir = "celebs"  # Path to your celeb library
+        for celeb_name in os.listdir(celeb_dir):
+            celeb_path = os.path.join(celeb_dir, celeb_name)
+            if not os.path.isdir(celeb_path):
+                continue
+
+            for img_name in os.listdir(celeb_path):
+                img_path = os.path.join(celeb_path, img_name)
+                try:
+                    celeb_image = face_recognition.load_image_file(img_path)
+                    celeb_encodings = face_recognition.face_encodings(celeb_image)
+                    if not celeb_encodings:
+                        continue
+                    celeb_encoding = celeb_encodings[0]
+                    distance = face_recognition.face_distance([celeb_encoding], uploaded_encoding)[0]
+
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_match_name = celeb_name
+                        best_match_image_path = img_path
+                except Exception as e:
+                    print(f"Failed to process {img_path}: {e}")
+                    continue
+
+        if best_match_name:
+            # Send image of best match
+            with open(best_match_image_path, 'rb') as photo:
+                await update.message.reply_photo(photo=photo, caption=f"The celeb that the person is most similar to is {best_match_name}.")
+        else:
+            await update.message.reply_text("Sorry, I couldn’t find a similar celeb.")
+
+        # Reset state and show main menu
+        user_states[user_id] = None
+        await start(update, context)   
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
