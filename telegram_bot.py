@@ -60,21 +60,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please choose one of the options from the keyboard.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user_id = update.effective_user.id  # Get the unique ID of the user
 
+    # If we are expecting a face image from this user
     if user_states.get(user_id) == "awaiting_face":
+        # Download the image sent by the user
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
 
+        # Load the image and extract face encodings
         img = face_recognition.load_image_file(BytesIO(photo_bytes))
         encodings = face_recognition.face_encodings(img)
 
+        # Make sure exactly one face was found
         if len(encodings) != 1:
             await update.message.reply_text("Please upload an image with exactly one face.")
             return
 
+        # Temporarily store the encoding and update user state
         context.user_data["temp_face"] = encodings[0]
         user_states[user_id] = "awaiting_name"
+
+        # Ask for the person's name
         await update.message.reply_text("Great. What’s the name of the person in this image?")
 
 def main():
