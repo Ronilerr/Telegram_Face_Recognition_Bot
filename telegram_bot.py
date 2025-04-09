@@ -54,7 +54,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         known_faces.clear()
         known_names.clear()
         await start(update, context)
-    
+    # Similar celebs
+    elif text == "Similar celebs":
+        await update.message.reply_text("Upload me a picture of a single person and I will find which celebs are similar to that person.")
+        user_states[user_id] = "awaiting_celebrity_comparison"
+
     # User is now sending a name after face image
     elif user_states.get(user_id) == "awaiting_name":
         name = text
