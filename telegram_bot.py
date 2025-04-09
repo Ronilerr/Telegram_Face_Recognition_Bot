@@ -9,8 +9,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Define the custom keyboard
 keyboard_buttons = [
-    [KeyboardButton("Hello"), KeyboardButton("World")],
-    [KeyboardButton("Telegram"), KeyboardButton("Bot")]
+    [KeyboardButton("Add face"), KeyboardButton("Recognize faces")],
+    [KeyboardButton("Reset faces")]
 ]
 reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
 
