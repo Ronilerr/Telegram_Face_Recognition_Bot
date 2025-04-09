@@ -57,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if encoding is not None:
             known_faces.append(encoding)
             known_names.append(name)
-            await update.message.reply_text(f"Great. I will now remember {name}.")
+            await update.message.reply_text(f"Great. I will now remember this face")
         else:
             await update.message.reply_text("Something went wrong. Try again.")
 
@@ -143,7 +143,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("I don’t recognize anyone in this image.")
         else:
             names_str = ", ".join(recognized_names)
-            await update.message.reply_text(f"I found {len(encodings)} face(s): {names_str}")
+            await update.message.reply_text(f"I found {len(encodings)} faces in this images and the people are {names_str}")
 
         # Reset state and return to main menu
         user_states[user_id] = None
