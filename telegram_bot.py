@@ -2,7 +2,10 @@ import os
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
-
+import face_recognition
+from PIL import Image
+import numpy as np
+from io import BytesIO
 # Load environment variables from .env
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -13,6 +16,12 @@ keyboard_buttons = [
     [KeyboardButton("Reset faces")]
 ]
 reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
+# In-memory face database
+known_faces = []
+known_names = []
+
+# State tracking for users
+user_states = {}
 
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,8 +33,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Message handler for any of the buttons
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text in ["Hello", "World", "Telegram", "Bot"]:
-        await update.message.reply_text(text)
+    user_id = update.effective_user.id
+
+    # User pressed "Add face"
+    if text == "Add face":
+        await update.message.reply_text("Upload an image with a single face")
+        user_states[user_id] = "awaiting_face"
+
+    # User is now sending a name after face image
+    elif user_states.get(user_id) == "awaiting_name":
+        name = text
+        encoding = context.user_data.get("temp_face")
+
+        if encoding is not None:
+            known_faces.append(encoding)
+            known_names.append(name)
+            await update.message.reply_text(f"Great. I will now remember {name}.")
+        else:
+            await update.message.reply_text("Something went wrong. Try again.")
+
+        user_states[user_id] = None
+        await start(update, context)
+
+    # All other messages
     else:
         await update.message.reply_text("Please choose one of the options from the keyboard.")
 
