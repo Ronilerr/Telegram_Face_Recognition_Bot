@@ -59,6 +59,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Please choose one of the options from the keyboard.")
 
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_states.get(user_id) == "awaiting_face":
+        photo_file = await update.message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+
+        img = face_recognition.load_image_file(BytesIO(photo_bytes))
+        encodings = face_recognition.face_encodings(img)
+
+        if len(encodings) != 1:
+            await update.message.reply_text("Please upload an image with exactly one face.")
+            return
+
+        context.user_data["temp_face"] = encodings[0]
+        user_states[user_id] = "awaiting_name"
+        await update.message.reply_text("Great. What’s the name of the person in this image?")
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -66,6 +84,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.run_polling()
 
 if __name__ == "__main__":
