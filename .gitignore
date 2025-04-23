@@ -3,3 +3,5 @@ data_images
 .venv/
 celebs/
 known_faces/
+.DS_Store
+celebs_tsne_map.png
