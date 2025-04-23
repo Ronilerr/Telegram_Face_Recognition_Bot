@@ -1,4 +1,5 @@
 import os
+import random
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
@@ -18,21 +19,19 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 keyboard_buttons = [
     [KeyboardButton("Add face"), KeyboardButton("Recognize faces")],
     [KeyboardButton("Reset faces"), KeyboardButton("Similar celebs")],
-    [KeyboardButton("Map")]
+    [KeyboardButton("Map"), KeyboardButton("Guess the person")]
 ]
 reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
 
-# In-memory face database: list of dicts with encoding, name, image
-known_faces = []
-
-# State tracking for users
+# In-memory face database
+known_faces = []  # each item: {"encoding": ..., "name": ..., "image": PIL.Image}
 user_states = {}
 
-# Start command handler
+# Show main menu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Choose an option below:", reply_markup=reply_markup)
+    await update.message.reply_text("Choose from the options below:", reply_markup=reply_markup)
 
-# Function to generate the similarity map using TSNE
+# TSNE map generator
 def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_map.png"):
     encodings = []
     labels = []
@@ -41,11 +40,7 @@ def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_
     for entry in known_faces:
         encodings.append(entry["encoding"])
         labels.append(entry["name"])
-        img = entry.get("image")
-        if img:
-            images.append(img)
-        else:
-            images.append(Image.new("RGB", (45, 45), color=(150, 150, 150)))
+        images.append(entry["image"])
 
     for celeb in os.listdir(celeb_dir):
         celeb_path = os.path.join(celeb_dir, celeb)
@@ -92,7 +87,7 @@ def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_
     plt.close()
     return True
 
-# Message handler
+# Main message handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
@@ -121,9 +116,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_photo(photo=photo, caption="Here is the similarity map 🎯")
         else:
             await update.message.reply_text("Sorry, I couldn't generate the map.")
+        await update.message.reply_text("Choose from the options below:", reply_markup=reply_markup)
 
-        # Show menu again after sending the map
-        await update.message.reply_text("Choose an option below:", reply_markup=reply_markup)
+    elif text == "Guess the person":
+        if not known_faces:
+            await update.message.reply_text("I don’t know anyone yet! Add some faces first.")
+            return
+
+        chosen = random.choice(known_faces)
+        name = chosen["name"]
+        img = chosen["image"]
+
+        img = img.crop((0, 0, min(img.size), min(img.size)))
+        tiles = []
+        tile_size = img.size[0] // 3
+
+        for y in range(3):
+            for x in range(3):
+                box = (x * tile_size, y * tile_size, (x+1) * tile_size, (y+1) * tile_size)
+                tiles.append(img.crop(box))
+
+        random.shuffle(tiles)
+
+        new_img = Image.new("RGB", img.size)
+        i = 0
+        for y in range(3):
+            for x in range(3):
+                new_img.paste(tiles[i], (x * tile_size, y * tile_size))
+                i += 1
+
+        buffer = BytesIO()
+        new_img.save(buffer, format="JPEG")
+        buffer.seek(0)
+
+        context.user_data["guess_answer"] = name.lower()
+        user_states[user_id] = "awaiting_guess"
+        await update.message.reply_photo(photo=buffer, caption="Can you guess who this is? 🧩")
 
     elif user_states.get(user_id) == "awaiting_name":
         name = text
@@ -136,17 +164,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "name": name,
                 "image": Image.fromarray(img)
             })
-            await update.message.reply_text(f"Great. I will now remember this face")
+            await update.message.reply_text("Great. I will now remember this face")
         else:
             await update.message.reply_text("Something went wrong. Try again.")
 
         user_states[user_id] = None
         await start(update, context)
 
+    elif user_states.get(user_id) == "awaiting_guess":
+        guess = text.strip().lower()
+        correct = context.user_data.get("guess_answer")
+
+        if guess == correct:
+            await update.message.reply_text("🎉 You got it! You’re officially a face genius 😎")
+        else:
+            await update.message.reply_text(f"😅 Nope, nice try! That was *{correct.title()}*")
+
+        user_states[user_id] = None
+        await update.message.reply_text("Choose from the options below:", reply_markup=reply_markup)
+
     else:
         await update.message.reply_text("Please choose one of the options from the keyboard.")
 
-# Handler for uploaded photos
+# Handler for photo uploads
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     photo_file = await update.message.photo[-1].get_file()
@@ -175,8 +215,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recognized_names = []
 
         for face_encoding in encodings:
-            matches = [face_recognition.compare_faces([face["encoding"]], face_encoding)[0] for face in known_faces]
-            distances = [face_recognition.face_distance([face["encoding"]], face_encoding)[0] for face in known_faces]
+            matches = [face_recognition.compare_faces([f["encoding"]], face_encoding)[0] for f in known_faces]
+            distances = [face_recognition.face_distance([f["encoding"]], face_encoding)[0] for f in known_faces]
 
             if any(matches):
                 best_index = np.argmin(distances)
@@ -244,7 +284,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = None
         await start(update, context)
 
-# Main function
+# Start the bot
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
