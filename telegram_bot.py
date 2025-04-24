@@ -11,11 +11,11 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
-# Load environment variables from .env
+# Load the .env file to access environment variables like the bot token
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Define the custom keyboard
+# Create a custom keyboard layout for the bot's main menu
 keyboard_buttons = [
     [KeyboardButton("Add face"), KeyboardButton("Recognize faces")],
     [KeyboardButton("Reset faces"), KeyboardButton("Similar celebs")],
@@ -23,25 +23,27 @@ keyboard_buttons = [
 ]
 reply_markup = ReplyKeyboardMarkup(keyboard_buttons, resize_keyboard=True)
 
-# In-memory face database
-known_faces = []  # each item: {"encoding": ..., "name": ..., "image": PIL.Image}
-user_states = {}
+# In-memory database to store known faces with their encodings, names, and image
+known_faces = []  # Each item is a dictionary with keys: encoding, name, image
+user_states = {}  # Tracks current state for each user (e.g., awaiting photo, name, etc.)
 
-# Show main menu
+# Sends the main menu to the user
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Choose from the options below:", reply_markup=reply_markup)
 
-# TSNE map generator
+# Generates a TSNE map visualizing face encodings from users and celebs
 def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_map.png"):
     encodings = []
     labels = []
     images = []
 
+    # Add known user faces
     for entry in known_faces:
         encodings.append(entry["encoding"])
         labels.append(entry["name"])
         images.append(entry["image"])
 
+    # Load and encode celeb faces
     for celeb in os.listdir(celeb_dir):
         celeb_path = os.path.join(celeb_dir, celeb)
         if not os.path.isdir(celeb_path):
@@ -59,22 +61,26 @@ def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_
                 continue
 
     if not encodings:
-        return False
+        return False  # Return False if nothing to visualize
 
+    # Perform dimensionality reduction using t-SNE
     tsne = TSNE(n_components=2, perplexity=30, init='pca', learning_rate='auto', random_state=42)
     reduced = tsne.fit_transform(np.array(encodings))
 
+    # Normalize coordinates to fit into the plot
     norm_x = (reduced[:, 0] - np.min(reduced[:, 0])) / (np.max(reduced[:, 0]) - np.min(reduced[:, 0]))
     norm_y = (reduced[:, 1] - np.min(reduced[:, 1])) / (np.max(reduced[:, 1]) - np.min(reduced[:, 1]))
-    norm_y *= 0.9
+    norm_y *= 0.9  # Adjust vertical spacing
 
+    # Draw the map
     fig, ax = plt.subplots(figsize=(18, 14))
     ax.set_title("Face Similarity Map", fontsize=14, pad=40)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect('equal')
-    ax.axis('off')
+    ax.axis('off')  # Hide axes
 
+    # Add thumbnail images and labels
     for x, y, img, label in zip(norm_x, norm_y, images, labels):
         thumb = img.resize((45, 45))
         im = OffsetImage(thumb, zoom=1)
@@ -82,16 +88,18 @@ def generate_tsne_map(known_faces, celeb_dir="celebs", output_path="celebs_tsne_
         ax.add_artist(ab)
         ax.text(x, y - 0.035, label, fontsize=6, ha='center', va='top')
 
+    # Save the map to a file
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
     return True
 
-# Main message handler
+# Handles all text messages from the user and routes them to the appropriate logic
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
 
+    # React according to the user's choice
     if text == "Add face":
         await update.message.reply_text("Upload an image with a single face")
         user_states[user_id] = "awaiting_face"
@@ -101,7 +109,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = "awaiting_recognition"
 
     elif text == "Reset faces":
-        known_faces.clear()
+        known_faces.clear()  # Reset the in-memory database
         await start(update, context)
 
     elif text == "Similar celebs":
@@ -119,6 +127,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Choose from the options below:", reply_markup=reply_markup)
 
     elif text == "Guess the person":
+        # Choose a known face and create a puzzle by shuffling tiles
         if not known_faces:
             await update.message.reply_text("I don’t know anyone yet! Add some faces first.")
             return
@@ -127,17 +136,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = chosen["name"]
         img = chosen["image"]
 
+        # Crop image to square for puzzle
         img = img.crop((0, 0, min(img.size), min(img.size)))
         tiles = []
         tile_size = img.size[0] // 3
 
+        # Cut the image into 9 tiles
         for y in range(3):
             for x in range(3):
                 box = (x * tile_size, y * tile_size, (x+1) * tile_size, (y+1) * tile_size)
                 tiles.append(img.crop(box))
 
-        random.shuffle(tiles)
+        random.shuffle(tiles)  # Shuffle the tiles
 
+        # Paste the shuffled tiles into a new image
         new_img = Image.new("RGB", img.size)
         i = 0
         for y in range(3):
@@ -153,6 +165,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = "awaiting_guess"
         await update.message.reply_photo(photo=buffer, caption="Can you guess who this is? 🧩")
 
+    # Handle when user types the name after uploading a face
     elif user_states.get(user_id) == "awaiting_name":
         name = text
         encoding = context.user_data.get("temp_face")
@@ -171,6 +184,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = None
         await start(update, context)
 
+    # Handle the user's guess in the "Guess the person" puzzle
     elif user_states.get(user_id) == "awaiting_guess":
         guess = text.strip().lower()
         correct = context.user_data.get("guess_answer")
@@ -186,13 +200,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Please choose one of the options from the keyboard.")
 
-# Handler for photo uploads
+# Handles photo uploads based on current user state
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
     img = face_recognition.load_image_file(BytesIO(photo_bytes))
 
+    # When adding a new face
     if user_states.get(user_id) == "awaiting_face":
         encodings = face_recognition.face_encodings(img)
         if len(encodings) != 1:
@@ -204,6 +219,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = "awaiting_name"
         await update.message.reply_text("Great. What’s the name of the person in this image?")
 
+    # When recognizing faces in the image
     elif user_states.get(user_id) == "awaiting_recognition":
         encodings = face_recognition.face_encodings(img)
         locations = face_recognition.face_locations(img)
@@ -214,6 +230,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         recognized_names = []
 
+        # Compare to known faces
         for face_encoding in encodings:
             matches = [face_recognition.compare_faces([f["encoding"]], face_encoding)[0] for f in known_faces]
             distances = [face_recognition.face_distance([f["encoding"]], face_encoding)[0] for f in known_faces]
@@ -224,6 +241,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 recognized_names.append("Unknown")
 
+        # Draw rectangles and names on the image
         img_pil = Image.fromarray(img)
         draw = ImageDraw.Draw(img_pil)
 
@@ -244,6 +262,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = None
         await start(update, context)
 
+    # When comparing to celeb database
     elif user_states.get(user_id) == "awaiting_celebrity_comparison":
         encodings = face_recognition.face_encodings(img)
         if len(encodings) != 1:
@@ -255,6 +274,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         best_match_image_path = None
         best_distance = float("inf")
 
+        # Loop over celebs and compare
         celeb_dir = "celebs"
         for celeb_name in os.listdir(celeb_dir):
             celeb_path = os.path.join(celeb_dir, celeb_name)
@@ -284,7 +304,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = None
         await start(update, context)
 
-# Start the bot
+# Initialize and start the Telegram bot
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
